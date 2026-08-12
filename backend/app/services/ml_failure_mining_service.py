@@ -36,7 +36,9 @@ class MLFailureMiningService:
         self._kmeans: KMeans | None = None
         self._metadata: dict[str, Any] = {}
 
-        if settings.ML_AUTO_LOAD and self.model_path.exists():
+        # Artifacts are loaded only when an ML service instance is created;
+        # importing/starting the main API never downloads the embedding model.
+        if self.model_path.exists():
             self.load()
 
     @property
