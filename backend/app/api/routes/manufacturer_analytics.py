@@ -1,4 +1,3 @@
-from collections import Counter, defaultdict
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -16,15 +15,6 @@ router = APIRouter(prefix="/analytics/manufacturer", tags=["Manufacturer Analyti
 # ALLOW: OVERALL_MANAGEMENT. QUALITY/DESIGN get scoped subsets via role_analytics.py.
 
 
-def _month(value):
-    """Return a stable YYYY-MM bucket for a datetime/date-like value."""
-    return value.strftime("%Y-%m") if value else None
-
-
-def _sorted_rows(counter):
-    return [{"period": period, "count": count} for period, count in sorted(counter.items())]
-
-
 @router.get("/overview", dependencies=[Depends(require_roles("OVERALL_MANAGEMENT"))])
 def overview(db: Session = Depends(get_db)):
     total_tickets = db.query(func.count(ServiceTicket.id)).scalar()
@@ -38,7 +28,7 @@ def overview(db: Session = Depends(get_db)):
                       .group_by(ServiceTicket.technician_diagnosis_department).all())
 
     by_failure_mode = (db.query(ServiceTicket.technician_diagnosis_failure_mode, func.count())
-                       .group_by(ServiceTicket.technician_diagnosis_failure_mode).all())
+                        .group_by(ServiceTicket.technician_diagnosis_failure_mode).all())
 
     avg_confidence = db.query(func.avg(AIAnalysisResult.confidence)).scalar()
 
@@ -65,59 +55,6 @@ def overview(db: Session = Depends(get_db)):
             "predictions_pending": pending,
             "false_positive_alerts": false_positive,
         },
-    })
-
-
-@router.get("/trends", dependencies=[Depends(require_roles("OVERALL_MANAGEMENT"))])
-def analytics_trends(db: Session = Depends(get_db)):
-    """Monthly, data-backed trends for management charts.
-
-    Technician diagnosis remains separate from AI prediction/ground truth. Empty
-    dimensions are represented as UNKNOWN instead of being silently discarded.
-    """
-    tickets = db.query(
-        ServiceTicket.date,
-        ServiceTicket.technician_diagnosis_failure_mode,
-        ServiceTicket.technician_diagnosis_component,
-    ).all()
-
-    monthly = Counter()
-    failure_modes = defaultdict(Counter)
-    components = defaultdict(Counter)
-    for date, failure_mode, component in tickets:
-        period = _month(date)
-        if not period:
-            continue
-        monthly[period] += 1
-        failure_modes[period][failure_mode or "UNKNOWN"] += 1
-        components[period][component or "UNKNOWN"] += 1
-
-    prediction_events = db.query(
-        PredictiveEvent.timestamp, PredictiveEvent.actual_outcome
-    ).all()
-    prediction_outcomes = defaultdict(Counter)
-    for timestamp, outcome in prediction_events:
-        period = _month(timestamp)
-        if period:
-            prediction_outcomes[period][outcome or "PENDING"] += 1
-
-    return success({
-        "failure_trends": _sorted_rows(monthly),
-        "failure_mode_trends": [
-            {"period": period, "failure_mode": mode, "count": count}
-            for period in sorted(failure_modes)
-            for mode, count in sorted(failure_modes[period].items())
-        ],
-        "component_trends": [
-            {"period": period, "component": component, "count": count}
-            for period in sorted(components)
-            for component, count in sorted(components[period].items())
-        ],
-        "prediction_outcome_trends": [
-            {"period": period, "outcome": outcome, "count": count}
-            for period in sorted(prediction_outcomes)
-            for outcome, count in sorted(prediction_outcomes[period].items())
-        ],
     })
 
 
