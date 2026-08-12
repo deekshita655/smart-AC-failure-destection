@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -90,7 +92,7 @@ def store_ticket_cluster_result(ticket_id: str, db: Session = Depends(get_db)):
         ticket_id=ticket.id,
         model_name=prediction["model_name"],
         model_version=prediction["model_version"],
-        prediction_timestamp=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        prediction_timestamp=datetime.now(timezone.utc),
         predicted_failure_mode=None,
         predicted_component=None,
         predicted_department=None,
