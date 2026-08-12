@@ -5,7 +5,6 @@ from typing import Any
 
 import joblib
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
@@ -33,7 +32,7 @@ class MLFailureMiningService:
         self.artifact_dir = Path(settings.ML_ARTIFACT_DIR)
         self.model_path = self.artifact_dir / "kmeans.joblib"
         self.metadata_path = self.artifact_dir / "ml_metadata.joblib"
-        self._embedder: SentenceTransformer | None = None
+        self._embedder = None
         self._kmeans: KMeans | None = None
         self._metadata: dict[str, Any] = {}
 
@@ -44,8 +43,10 @@ class MLFailureMiningService:
     def is_fitted(self) -> bool:
         return self._kmeans is not None
 
-    def _get_embedder(self) -> SentenceTransformer:
+    def _get_embedder(self):
+        # Lazy import/load keeps normal API startup independent of the ML model.
         if self._embedder is None:
+            from sentence_transformers import SentenceTransformer
             self._embedder = SentenceTransformer(self.model_name)
         return self._embedder
 
