@@ -1,7 +1,7 @@
 import React from 'react'
 
 export function BarChart({ data = [], labelKey, valueKey = 'count', title, limit = 8 }) {
-  const rows = [...data].filter(r => Number.isFinite(Number(r[valueKey]))).slice(0, limit)
+  const rows = [...data].filter(r => Number.isFinite(Number(r[valueKey]))).sort((a,b) => Number(b[valueKey]) - Number(a[valueKey])).slice(0, limit)
   const max = Math.max(...rows.map(r => Number(r[valueKey])), 1)
   return <div className="chart-card">
     {title && <h3>{title}</h3>}
@@ -18,7 +18,7 @@ export function BarChart({ data = [], labelKey, valueKey = 'count', title, limit
 
 export function LineChart({ data = [], xKey, yKey = 'count', title }) {
   const rows = data.filter(r => Number.isFinite(Number(r[yKey]))).slice(-30)
-  const width = 720, height = 250, left = 44, right = 18, top = 20, bottom = 38
+  const width = 720, height = 250, left = 48, right = 18, top = 20, bottom = 38
   const plotWidth = width - left - right
   const plotHeight = height - top - bottom
   const max = Math.max(...rows.map(r => Number(r[yKey])), 1)
@@ -28,31 +28,32 @@ export function LineChart({ data = [], xKey, yKey = 'count', title }) {
     return { x, y, value: Number(r[yKey]), label: String(r[xKey]).slice(5, 10) }
   })
   const polyline = points.map(p => `${p.x},${p.y}`).join(' ')
-  const area = points.length > 1
-    ? `${points[0].x},${top + plotHeight} ${polyline} ${points[points.length - 1].x},${top + plotHeight}`
-    : ''
-
+  const area = points.length > 1 ? `${points[0].x},${top + plotHeight} ${polyline} ${points[points.length - 1].x},${top + plotHeight}` : ''
   return <div className="chart-card">
     {title && <h3>{title}</h3>}
-    {rows.length ? <div className="line-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title || 'Trend chart'}>
-        {[0, 0.5, 1].map((ratio, i) => {
-          const y = top + plotHeight - ratio * plotHeight
-          const value = Math.round(max * ratio)
-          return <g key={i}>
-            <line x1={left} y1={y} x2={width-right} y2={y} className="chart-gridline" />
-            <text x={left-8} y={y+4} textAnchor="end" className="chart-y-label">{value}</text>
-          </g>
-        })}
-        {area && <polygon points={area} className="line-area" />}
-        <polyline points={polyline} className="line-path" fill="none" />
-        {points.map((p, i) => <g key={i}>
-          <circle cx={p.x} cy={p.y} r="5" className="line-dot" />
-          {p.value > 0 && <text x={p.x} y={p.y-10} textAnchor="middle" className="chart-point-label">{p.value}</text>}
-          <text x={p.x} y={height-14} textAnchor="middle" className="chart-x-label">{p.label}</text>
-        </g>)}
-      </svg>
-    </div> : <div className="empty-chart">No trend data available</div>}
+    {rows.length ? <div className="line-wrap"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title || 'Trend chart'}>
+      {[0, 0.5, 1].map((ratio, i) => { const y = top + plotHeight - ratio * plotHeight; const value = Math.round(max * ratio); return <g key={i}><line x1={left} y1={y} x2={width-right} y2={y} className="chart-gridline" /><text x={left-8} y={y+4} textAnchor="end" className="chart-y-label">{value}</text></g> })}
+      {area && <polygon points={area} className="line-area" />}
+      <polyline points={polyline} className="line-path" fill="none" />
+      {points.map((p, i) => <g key={i}><circle cx={p.x} cy={p.y} r="5" className="line-dot" />{p.value > 0 && <text x={p.x} y={p.y-10} textAnchor="middle" className="chart-point-label">{p.value}</text>}<text x={p.x} y={height-14} textAnchor="middle" className="chart-x-label">{p.label}</text></g>)}
+    </svg></div> : <div className="empty-chart">No trend data available</div>}
+  </div>
+}
+
+export function HealthChart({ data = [], title = 'Device Health' }) {
+  const rows = [...data].sort((a,b) => Number(a.health_score) - Number(b.health_score))
+  return <div className="chart-card">
+    <h3>{title}</h3>
+    {rows.length ? <div className="health-list">{rows.map(r => {
+      const score = Math.max(0, Math.min(100, Number(r.health_score) || 0))
+      const risk = String(r.status || '').toUpperCase()
+      const className = risk.includes('CRITICAL') ? 'critical' : risk.includes('RISK') ? 'risk' : 'healthy'
+      return <div className="health-row" key={r.device_id}>
+        <div className="health-meta"><span>{r.device_id}</span><b>{score.toFixed(0)}%</b></div>
+        <div className="health-track"><div className={`health-fill ${className}`} style={{ width: `${score}%` }} /></div>
+        <small>{r.status} · anomaly {Number(r.anomaly_score || 0).toFixed(2)}</small>
+      </div>
+    })}</div> : <div className="empty-chart">No health data available</div>}
   </div>
 }
 
