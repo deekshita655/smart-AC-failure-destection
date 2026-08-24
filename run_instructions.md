@@ -6,13 +6,12 @@ This project has three parts:
 smart-ac-platform/
 ├── backend/     FastAPI application (this is what everyone integrates against)
 ├── ml/          Placeholder KMeans clustering script (plan B for the ML team)
-└── frontend/    Minimal React (Vite) app with role-based dashboards
+└── frontend/    React (Vite) app with role-based dashboards and analytics charts
 ```
 
-Everything below has been tested end-to-end (backend boot, auth, RBAC, ticket
-creation, sensor → predictive-ticket pipeline, KMeans script) except the parts
-that depend on external credentials you don't have yet (Azure OpenAI, Gemini) —
-those fail *gracefully* with a `CONFIGURATION_PENDING` error until you supply keys.
+The analytics dashboards are backed by FastAPI and PostgreSQL. Power BI remains
+an additional manufacturer reporting/export layer; the React dashboards are the
+in-product visualization layer.
 
 ---
 
@@ -27,7 +26,7 @@ those fail *gracefully* with a `CONFIGURATION_PENDING` error until you supply ke
 ```bash
 cd backend
 python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\\Scripts\\activate
 pip install -r requirements.txt
 ```
 
@@ -41,17 +40,9 @@ Edit `.env`:
 
 - **DATABASE_URL** — point at your Postgres instance, e.g.
   `postgresql+psycopg2://ac_user:ac_password@localhost:5432/smart_ac_db`
-
-  **No Postgres handy?** For quick local testing you can use SQLite instead —
-  just set `DATABASE_URL=sqlite:///./smart_ac.db`. All SQLAlchemy models work
-  unchanged. Switch back to Postgres before anything resembling production use.
-
-- **SECRET_KEY** — set to any long random string (used to sign JWTs).
+- **SECRET_KEY** — set to any long random string.
 - **AZURE_OPENAI_*** / **AZURE_OPENAI_EMBEDDING_*** / **GEMINI_API_KEY** — leave
-  as `CONFIGURATION_PENDING` until the Azure/Gemini owners hand you real values.
-  The app boots fine without them; only `/service-tickets/{id}/analyze`,
-  `/service-tickets/{id}/embed`, and `/chat/message` will return a
-  `503 CONFIGURATION_PENDING` error until they're set.
+  as `CONFIGURATION_PENDING` until real values are available. The app still boots.
 
 ### 2.2 Create the database (if using Postgres)
 
@@ -67,20 +58,22 @@ GRANT ALL PRIVILEGES ON DATABASE smart_ac_db TO ac_user;
 uvicorn app.main:app --reload --port 8000
 ```
 
-Tables are created automatically on startup (`Base.metadata.create_all`) — no
-Alembic migration step is required for this MVP.
-
+Tables are created automatically on startup (`Base.metadata.create_all`).
 Interactive API docs: **http://localhost:8000/docs**
 
-### 2.4 Seed demo data
+### 2.4 Seed demo users/devices and analytics data
 
 In a second terminal (venv still active):
 
 ```bash
 python seed.py
+python seed_analytics_demo.py
 ```
 
-This creates one user per role and 3 demo devices:
+`seed.py` creates the role accounts and baseline devices. The analytics seed is
+separate and repeat-safe: it creates non-PII demo tickets, diagnosis/ground-truth
+fields, AI prediction rows, device health history, anomalies, predictive events,
+and preventive tickets. Demo analytics records are prefixed `DEMO-AN-`.
 
 | username  | password       | role               |
 |-----------|----------------|--------------------|
@@ -90,20 +83,17 @@ This creates one user per role and 3 demo devices:
 | design1   | Password123!   | DESIGN             |
 | admin1    | Password123!   | ADMIN              |
 
-Demo devices: `DEV-90612`, `DEV-90613`, `DEV-90700`.
+Demo devices from `seed.py`: `DEV-90612`, `DEV-90613`, `DEV-90700`.
+Analytics devices from `seed_analytics_demo.py`: `DEMO-AN-001` through `DEMO-AN-006`.
 
 ### 2.5 Quick sanity check
 
 ```bash
 curl http://localhost:8000/api/v1/health
-# {"success":true,"data":{"status":"ok"},"request_id":"..."}
-
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"tech1","password":"Password123!"}'
 ```
 
----
+Then log in and use the returned Bearer token against the analytics endpoints in
+`/docs`.
 
 ## 3. Frontend setup
 
@@ -114,12 +104,18 @@ cp .env.example .env
 npm run dev
 ```
 
-Open **http://localhost:5173**. Sign in with `tech1` / `Password123!` (or any
-seeded account). The Vite dev server proxies `/api` to `http://localhost:8000`
-by default (see `vite.config.js`) — adjust `VITE_API_BASE_URL` in `.env` if
-your backend runs elsewhere.
+Open **http://localhost:5173**. Sign in with the seeded role account. The
+management, quality and design pages now render live charts from FastAPI rather
+than static placeholder graphs.
 
----
+Useful pages:
+
+- `/management` — reliability, failure trends, severity, model/component analysis,
+  serial-range risk and predictive maintenance.
+- `/quality` — fixes, component repair frequency, repair trend and severity.
+- `/design` — failure trend, model comparison, component/failure-mode distribution,
+  model × failure-mode matrix and serial-range patterns.
+- `/technician` — service console and device-specific analytics.
 
 ## 4. ML placeholder (KMeans plan-B script)
 
@@ -131,28 +127,12 @@ cd ml
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
 python kmeans_placeholder_training.py --input /path/to/FINALDATASET.csv --output ./artifacts --k 6
-```
-
-Outputs in `./artifacts/`:
-- `kmeans_model.joblib` — fitted sklearn pipeline
-- `cluster_assignments.csv` — `record` → `cluster_id`
-- `metrics.json` — silhouette score, k, sample count
-
-To push a real (or placeholder) ML prediction into a ticket, call:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/service-tickets/TCK-1/ml-result \
-  -H "Authorization: Bearer <admin_access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"model_name":"kmeans-placeholder","model_version":"0.1","failure_mode":"Refrigerant Failure","component":"Compressor","department":"Refrigeration","confidence":0.7,"suggested_action":"Inspect refrigerant lines"}'
 ```
 
 ## 5. Simulating sensor data (predictive maintenance)
 
-There's no separate simulator script shipped in this MVP handoff, but any
-process (a cron job, a notebook, a simple loop) can POST directly:
+Any process can POST sensor readings directly:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/sensors/readings \
@@ -166,37 +146,32 @@ curl -X POST http://localhost:8000/api/v1/sensors/readings \
   }'
 ```
 
-If the values are far enough from baseline, this automatically creates a
-`DeviceHealth` row, an `Anomaly` row, a `PredictiveEvent`, and a `PENDING`
-`PreventiveTicket` — visible via `GET /api/v1/preventive-tickets`.
-
----
+The predictive pipeline can create DeviceHealth, Anomaly, PredictiveEvent and
+PreventiveTicket records, which are then visible in the management dashboard.
 
 ## 6. Power BI
 
-Point Power BI's **Web / REST connector** at (with an `OVERALL_MANAGEMENT` or
-`ADMIN` bearer token in the request header):
+Power BI reads the same PII-free analytics layer through:
 
 - `GET /api/v1/powerbi/dataset/service-tickets`
 - `GET /api/v1/powerbi/dataset/ai-predictions`
 - `GET /api/v1/powerbi/dataset/predictive-maintenance`
 
-These are flattened, PII-free, read-only JSON datasets. See `architecture.md`
-Part 10 for field definitions.
+These endpoints require an `OVERALL_MANAGEMENT` or `ADMIN` bearer token and are
+read-only. The React application does not expose the Power BI credentials to the
+browser; Power BI is intended as the separate manufacturer reporting layer.
 
----
+## 7. Smoke testing
 
-## 7. Running tests / verifying your setup works
+Use `/docs` (Swagger UI) to verify, in order:
+`POST /auth/login` → **Authorize** with the access token → analytics endpoints.
 
-There's no test suite bundled (out of scope per the brief), but you can
-smoke-test manually via `/docs` (Swagger UI) — try, in order:
-`POST /auth/login` → copy `access_token` → click **Authorize** in Swagger →
-`POST /devices/lookup` → `POST /service-tickets` → `POST /service-tickets/{id}/analyze`.
+For the UI, log in as `mgmt1` and open `/management`. After running
+`seed_analytics_demo.py`, the failure trend should show a multi-day series and the
+model/component/failure-mode/severity charts should contain multiple categories.
 
----
+## 8. Known limitations
 
-## 8. Known limitations / things you must still supply
-
-See `architecture.md` → **OPEN CONTRACTS** for the full list. In short:
-Azure OpenAI credentials, Gemini API key, the frozen ML JSON schema, the OCR
-JSON schema, and a production CORS origin list are all currently placeholders.
+See `architecture.md` → **OPEN CONTRACTS** for external Azure/Gemini/ML/OCR
+credentials and other integration contracts. Production CORS and deployment
+configuration still need environment-specific values.

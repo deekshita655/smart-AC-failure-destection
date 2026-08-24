@@ -41,5 +41,14 @@ class Settings(BaseSettings):
     LOCAL_UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_MB: int = 8
 
+    # ML failure-theme mining (from supplied ML pipeline).
+    # Disabled auto-loading keeps existing backend startup behavior unchanged;
+    # the model is loaded only when an ML endpoint is called or when an artifact
+    # is explicitly enabled through ML_AUTO_LOAD.
+    ML_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    ML_N_CLUSTERS: int = 5
+    ML_ARTIFACT_DIR: str = "ml_artifacts"
+    ML_AUTO_LOAD: bool = False
+
 
 settings = Settings()
