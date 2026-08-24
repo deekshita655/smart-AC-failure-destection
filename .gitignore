@@ -10,6 +10,6 @@ uploads/*
 artifacts/
 
 
-.env
-backend/.env
-frontend/.env
+#.env
+venv/
+frontend/node_modules/
