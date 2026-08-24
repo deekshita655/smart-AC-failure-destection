@@ -11,7 +11,7 @@ from app.api.routes import (
     auth, users, devices, service_tickets, images, ocr, ai_analysis,
     embeddings, comparison, device_analytics, manufacturer_analytics,
     role_analytics, sensors, predictive, preventive_tickets, chatbot,
-    powerbi, health, audit, ml,
+    powerbi, health, audit,
 )
 
 app = FastAPI(
@@ -68,6 +68,6 @@ for router in [
     ocr.router, ai_analysis.router, embeddings.router, comparison.router,
     device_analytics.router, manufacturer_analytics.router, role_analytics.router,
     sensors.router, predictive.router, preventive_tickets.router, chatbot.router,
-    powerbi.router, health.router, audit.router, ml.router,
+    powerbi.router, health.router, audit.router,
 ]:
     app.include_router(router, prefix="/api/v1")
